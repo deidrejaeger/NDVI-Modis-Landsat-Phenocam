@@ -1,0 +1,471 @@
+---
+title: "Phenopix Tutorial"
+author: "Fillipa & al (2016), Phenopix Vignette"
+date: "4/6/2017"
+output: 
+    html_document:
+        theme: yeti
+        
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+par(mfrow = c(1,1))
+```
+
+```{r Load libraries}
+library(phenopix)
+library(jpeg)
+```
+
+This tutorial is built primarily based on the Vignette for phenopix available with the code:
+`vignette("base", package = "phenopix")`
+
+## Structuring a folder tree useful for the analysis
+
+Giving a good structure to your analysis can make all subsequent steps simple and straightforward. If you are running a site that records images you will be dealing with quite heavy folders (with likely multiple years of data, hence some thousand files of images) that you need to handle with care. We suggest separate folders for each site (of course) but also year of analysis. Each year folder should contain a sub-folder with all images to be processed `(/IMG)`, one folder containing the reference image, i.e. the image you will use to draw your ROI `(/REF)`, one folder containing data for the region of interest `(/ROI)` and one folder containing extracted vegetation indexes `(/VI)`. The function structureFolder() provides a facility to create appropriate sub-folders. To use, *set the working directory to be the folder that is within the site, within the year*. 
+
+In the example below, we are only using one year of data, but have 2 types of images: RGB and RGB + IR. To start, let's just use the RGB images. This data is from the "harvardlph" PhenoCam data in Harvard Forest, MA from April 1, 2016 to December 1, 2016 with 30-minute daily capture from 10:00 AM to 2:00 PM. The data is publicly available from https://phenocam.sr.unh.edu/.
+```{r}
+# Change the working directory to work on your computer:
+setwd("/Users/elwoodk/Google_Drive/courses/earth-analytics/final-project/RGB/")
+
+# Use the code below to create the sub-folders recommended by the `phenopix` package:
+# my.path <- structureFolder(path = getwd(), showWarnings = FALSE)
+# str(my.path)
+```
+
+## Drawing a region of interest (ROI)
+
+Apart from structuring folders, drawing an ROI is the first, hence most important step of the analysis. The procedure is based on two steps: first, a reference image (chosen by the user) is plotted by calling function `readJPEG()` from package `jpeg` and `rasterImage()`. In Fig. 1 is the reference image from the harvardlph site and the code used to plot the image. We first define an easy plotting function to print on screen images.
+
+```{r Figure 1}
+.plotImage <- function(image, ...) {
+    ncols <- ncol(image)
+    nrows <- nrow(image)
+    suppressWarnings(plot(0,
+        type = "n", xlim = c(0, ncols), ylim = c(0, nrows), ...))
+    suppressWarnings(rasterImage(image, 
+        xleft = 0, ybottom = 0, xright = ncols, ytop = nrows, ...))
+}
+img <-jpeg::readJPEG("REF/harvardlph_2016_07_15_120007.jpg")
+.plotImage(img)
+```
+__Figure 1: A jpeg image printed on a graphic device using `readJPEG()` and `rasterImage()` embedded in the `.plotImage()` function__
+
+_To draw the ROI, use a variation of the following code:_
+```{r}
+DrawROI(path_img_ref = "REF/harvardlph_2016_07_15_120007.jpg", path_ROIs = "ROI/", nroi = 1, roi.names = c("veg"), file.type = ".jpg") 
+```
+
+where `path_img_ref` is the folder of your reference image, `path_ROIs` is the path in your computer where to store RData with ROI properties, number of ROIs, and their names. _Note that for two ROIs, you can use concatenate._
+
+A call to the function opens a graphic device and allows the use of `locator()` to define your ROI(s). Note that the use of locator is somewhat system specific. Check out the help file `?locator` for more details. Locator allows the user to draw a polygon by left-clicking vertices and then right-clicking (or press ESC on MacOS) to close the polygon. If you have chosen more than one ROI, after closing your first polygon, the image will appear again unmodified to draw the second ROI, and so on. Note that the plot title includes the name of the ROIs you are drawing. When you are done, in your `ROIs` folder an .RData file called roi.data.RData and a .jpg file of each ROI will be stored. The RData file is actually a list with the following structure:
+
+```{r}
+load('ROI/roi.data.Rdata')
+str(roi.data)
+```
+
+There are 2 elements list for each ROI. Each element is again a list containing two elements. One is a data.frame containing coordinates of all image pixels, together with a code indicating whether the given pixel belongs to the ROI or not. The second is a list with the coordinates of ROI margins as in output from locator().
+
+In the `ROIs` folder, separate jpeg files for each of your regions of interest are stored. A call to the function printROI() allows to plot in the same graph all existing ROIs for a picture. In the example from Harvard, only one ROI was drawn. Here is the code to generate the plot in fig. 2:
+
+```{r}
+PrintROI(path_img_ref = 'REF/harvardlph_2016_07_15_120007.jpg',
+path_ROIs = 'ROI/',
+which = 'all',
+col = palette())
+```
+__Figure 2: A plot of the regions of interest (ROIs), in output from PrintROI()__
+
+When you draw an ROI on your best quality image (say 640 x 428 pixels, as the REF image for Harvard LPH) you will probably need to identify the same ROI in smaller size images. This will be the case, for example, if you want to conduct a pixel-based analysis, illustrated later on. Pixel based analysis is computationally intense and therefore it is suggested to run it on rather small size images. The function updateROI() allows to recalculate pixels falling within a given ROI in images of different size compared to the one where the ROI was first drawn.
+
+Usage is:
+```{r}
+# img2 <-jpeg::readJPEG("REF/harvardlph_2016_07_15_120007.jpg")
+# updateROI(roi.data, img2)
+```
+
+old.roi is the original roi.data object, new.img is the re-sized image. A new object with same structure as the original roi.data is returned.
+
+***
+*** This is where I have finished reviewing/editing to be relevant to the harvard data set ***
+***
+
+## Extraction of vegetation indexes
+
+At this point, you have an r object stored as roi.data.Rdata in your ROI path that defines which pixels fall into one or more ROIs. The next step will be to extract information on those pixels from each of your images. The function that performs this task is extractVIs(). The usage and arguments are outlined below:
+
+`r extractVIs(img.path = , roi.path = , vi.path = , roi.name = c("ROI1, ROI2, etc.), plot = TRUE, spatial = FALSE, date.code = "yyyy_mm_dd_HHMM", npixels = , file.type = " ", bind = , ncores = 1))`
+
+`img.path` is the path where one year of images are stored _(likely just "IMG/"). It is not mandatory to have only one year of images in your folder. However it is suggested to structure your data into separate folders for each year because nearly all the functions we will see later are designed to work an a single season of data. 
+
+`roi.path` is the path to your `roi.data.Rdata` (likely just "ROI/"), 
+
+`vi.path` is the path where extracted vegetation indexes will be saved (likely just "VI/"). Hence, this function can be assigned to an object to have your vegetation indexes returned into R, or alternatively `loaded` later if not assigned. The argument `begin` allows to set a beginning date to update an existing time series without reprocessing the whole year of data. For example, if you run `extractVIs` in mid June to have a first look at your time series, once your season will be completed you do not want to re-run the analysis on the already processed images. Hence, you set the argument begin to the first unprocessed date. A new `VI.data.Rdata` will be saved in your path, with the beginning date incorporated in the filename if argument `bind` is set to `FALSE`. Conversely, the `VI.data` object already existing in your VI folder will be updated with new records and overwritten.
+
+The argument `npixels` defines if a pixel aggregation is performed prior to the analysis (i.e. image degradation). Default 1 means no aggregation. If `npixels` == 2 than 4 pixels are aggregated in a 2x2 square. Similarly if `npixels` is 3, 9 pixels are aggregated in 3x3 squares and so on. 
+
+The argument `file.type` is used to specify how the extension of your jpeg files are written (e.g. jpg, jpeg, JPG, JPEG). More than one argument is also allowed to account for different extensions in the same folder. However, remember that only jpeg files are allowed.
+
+The argument spatial allows to perform pixel-based analysis. This is a topic discussed in a dedicated vignette.
+```{r}
+library(rgdal)
+# extractVIs(img.path = "IMG/", roi.path = "ROI/", vi.path = "VI/", roi.name = "veg", plot = TRUE, spatial = FALSE, date.code = "yyyy_mm_dd_HHMM", npixels = 3, file.type = ".jpg", bind = TRUE, log.file = "VI/", begin = NULL)
+```
+
+The construction of the time series implies that R recognizes a time vector, typically retrieved from the file name of each picture. The function responsible for this conversion is extractDateFilename(). It is a rather internal function but it is worthwhile to look how it works to properly set the filenames of your imagery archive. Arguments to the function are filename and date.code. Filename must be a character string with an underscore "_" that separates site name and date (e.g. 'harvardlph_20140728.jpg'). The format of your date must be provided in `date.code`. In the example above, `date.code` will be: 'yyyymmdd'. Let's look at some examples, but before doing so, it is worthwhile to remember the the file naming system is under your responsibility when you set up the storage process for your images, or by some renaming routines set up later.
+
+```{r}
+extractDateFilename(filename = "harvardlph_2016_07_15_120007", date.code = "yyyy_mm_dd_HHMM")
+```
+
+Now let's look from closer at the structure of the object `VI.data` saved in your `/VI` directory. *Note that I had some issues with incomplete extraction of images, particularly if the images were of different sizes (pixel width x length). It is possible that `updateROI` would help with this issue, but I just downsized my large images to match my smaller images and that seemed to work.
+
+```{r}
+load("VI/VI.data.Rdata")
+summary(VI.data) # a list with two data.frames, one for each ROI
+names(VI.data[[1]]) # the list of variables (including color indices) extracted from each image
+View(VI.data$veg) # view the dataframe for the "veg" ROI
+```
+
+The processing of each ROI produces a data.frame object with date in POSIX format, numeric day of year (doy), and the vegetation indexes. Green, red and blue digital numbers (range [0,255]) averaged over the ROI (g.av, r.av and b.av, respectively), their standard deviations (g.sd, r.sd and b.sd). `bri.av` is the ROI averaged brightness, calculated as the sum of red, green, and blue digital numbers for each pixel and then averaged. From the digital numbers (dn) of each color, relative indexes (`rel.i`) are calculated as follows:
+
+`rel.i` = $/frac{dn_{color}}{(dn_{red} + dn_{green} + dn_{blue})}$
+
+These values are calculated for each pixel and then averaged over the entire ROI (`columns gi.av`, `ri.av`, `bi.av`), and the standard deviation is calculated as well. In fig.3 you can see how a seasonal course of raw color digital numbers of a subalpine grassland site looks like:
+
+```{r}
+with(VI.data$veg, plot(date, r.av, pch=20, col='red', ylim=c(0,255), ylab="DN [0,255]"))
+with(VI.data$veg, points(date, g.av, col='green', pch=20))
+with(VI.data$veg, points(date, b.av, col='blue', pch=20))
+```
+__Figure 3: Seasonal course of raw digital numbers, WSN21, year 2017__
+
+More interesting is the plot of relative indexes (fig. 4):
+```{r figure 4}
+with(VI.data$veg, plot(date, ri.av, pch=20, col='red', ylim=c(0.1,0.6), ylab='Relative indexes', xlab = "Date"))
+with(VI.data$veg, points(date, gi.av, col='green', pch=20))
+with(VI.data$veg, points(date, bi.av, col='blue', pch=20))
+```
+__Figure 4: Seasonal course of relative green red and blue indexes, Harvard forest, year 2016__
+
+Several patterns are interesting in the seasonal course of fig.4:
+
+- Snow disappearance (mid May) leads to an increase in relative red and a sharp decrease in relative blue  
+- The green signal follows a bell shaped pattern throughout the growing season, with a maximum in late July. This signal is somewhat mirrored by an inverse behavior of relative blue, whereas relative red gradually increases throughout the season.
+
+## Filter out data
+
+Data retrieved from images often need robust methods for polishing the time series. Bad weather conditions, low illumination, dirty lenses are among the most common issues that determine noise in the time series of vegetation indexes. Accordingly we designed a function `autoFilter()` based on 4 different approaches. There are multiple filters to use: "night", "blue", `mad`, `max`, and "spline". 
+
+Filters are applied in the order listed in the argument. `Night` filter removes records under a certain gcc value (as specified in filter.options). The default is 0.2. `Blue` filter is intended to remove bad images and is very aggressive. It is suggested only for very low quality images. The daily mean and standard deviation on bcc is computed and a sd threshold is computed as the quantile of standard deviations with prob = 0.05. An envelope is then computed as daily mean bcc +/- the calculated threshold. Raw data outside this envelope are discarded. The `mad` filter is applied according to Papale et al 2006 (biogeosciences) created to remove spikes on FLUXNET data. The `max` filter is based on Sonnentag et al (2012) and computes the 90% of the curve based on a three days moving window. The spline filter is based on Migliavacca et al (2011). 
+
+The function is designed to receive in input a `data.frame` structured as in output from `extractVIs`, hence its default expression may appear rather complicated.
+
+*Note that the function `autoFilter` is unsuccessful when there are duplicate rows. To avoid this problem, I (with the help of Caitlin) added the function `unique()` before the data.frame to avoid problems.
+
+`r autoFilter()`
+
+```{r autoFilter}
+library(zoo)
+library(tseries)
+library(reshape2)
+VI.data.veg <- as.data.frame(VI.data$veg)
+VI.data.veg2 <- unique(VI.data$veg)
+filtered.data <- autoFilter(data = unique(VI.data$veg), dn=c('ri.av', 'gi.av', 'bi.av'), brt = 'bri.av', filter = c("night", "spline", "max"), na.fill = TRUE)
+# load("VI/VI.data.Rdata")
+```
+__Figure 5: Raw and filtered relative greenness index, default plot of function `autoFilter()`__
+
+```{r}
+str(filtered.data)
+str(VI.data)
+plot(VI.data.veg)
+```
+
+
+In the structure of the output data.frame there are three important points:  
+    - We introduce here a new class of R objects (`zoo`). From here on all further analyses are based on `zoo` (or, to a lesser extent `ts`) time series. The time index of the data is numeric day of year (`doy`). As a consequence, the attribute year is lost at this step of the analysis (i.e. we suggest to include it in the object name);
+- The function autoFilter aggregates the data at a daily time step by default. The returned data.frame contains unfiltered (but still daily aggregated) color indexes (here called gcc, rcc, and bcc, cc standing for chromatic coordinate) and a column of data for each filtering step. The name of the filter applied is reported in the column name.
+- The argument `na.fill` defaults to `TRUE`, meaning that NA already existing in the VI.data (unlikely) or data discarded by the filtering procedure (much more likely) are filled by linear approximation (using na.approx from `zoo` pack-
+age. This is done because the subsequent fitting step requires no NA appearing in the time series. If a user wants to have control on the discarded data and e.g. customize the gap-filling we recommend setting na.fill to FALSE. For those unfamiliar with the zoo structure we created a function convert to convert from zoo to a normal data.frame:
+
+```{r}
+dataframed <- convert(filtered.data, year='2017')
+```
+
+However, we strongly recommend to get familiar with the zoo package since it has wonderful facilities for plotting, aggregating and filling time series. Filters are based on methods relying on different parameters that can be tuned by the user (called filter options). A function allows to return default filter options that can be in turn changed.
+
+```{r}
+my.options <- get.options()
+names(my.options) # a named list, one element for each filter
+```
+
+```{r}
+## see help file for the meaning
+my.options$max.filter$qt <- 0.95 # use 95th percentile instead of 90th for max.filter
+filtered.data2 <- autoFilter(unique(VI.data$veg), filter.options=my.options, plot=FALSE)
+plot(filtered.data$max.filtered) ## default options
+lines(filtered.data2$max.filtered, col='red') # customized options
+legend('topleft', col=palette()[1:2], lty=1, legend=c('90th', '95th'), bty='n')
+```
+__Figure 6: Effect (not that large indeed) of changing filter options with function
+autoFilter()__
+
+## Fit a curve to the data
+
+The seasonal trajectory of greenness index of a vegetation canopy provides per se important information, but to turn qualitative information into quantitative data we need to make some more computation. Traditionally, data similar to these (e.g. satellite-based NDVI trajectories) are processed in two main ways:  
+- extract time thresholds based on a percentage of development (e.g. the day when half of the maximum value of the index is reached);  
+- fit a curve and extract relevant thresholds based on curve properties.  
+
+In the package `phenopix` both possibilities are available. The core function for data fitting and phenophase extraction is `greenProcess()`. This function calls and is related to several rather internal functions that perform the different fittings. Available fittings include:  
+- the fit of a cubic spline  
+- the fit of an equation proposed by Beck et al. (2006)  
+- the fit of an equation proposed by Elmore et al. (2012)  
+- the fit of an equation proposed by Klosterman et al. (2014) with two implementations  
+- the fit of an equation proposed by Gu et al. (2009)  
+
+All fits are based on a double - logistic function with a different number of parameters.  
+
+After curve fitting, relevant dates in the seasonal trajectory (aka phenophases) are extracted with different methods:  
+- A method called `trs` which splits the seasonal course into increasing and decreasing trajectory based on the sign of the first derivative and then identifies a given threshold (by default the 50%) of both the increasing and decreasing trajectory. It allows to determine start of season (sos), end of season (eos) and length of season (los) as the difference between the two.  
+- A method called `derivatives` which extends `trs` in that it also calculates maximum growing and decreasing rates  
+- A method based on Klosterman approach which individuates 4 moments in the seasonal trajectory. Greenup represents the beginning of growth, maturity represents the reaching of some summer plateau, senescence represents the beginning of green decrease (or yellowing increase) and dormancy represents the end of the growing season.  
+- A method based on Gu approach which individuates 4 moments and some other curve parameters. The 4 relevant moments do not differ in their meaning compared to Klosterman phases, and are called upturn date (UD), stabilization date (SD), downturn date (DD), and recession date (RD).  
+
+Detail on curve fitting and phenophase extraction is provided in the help function of `?greenProcess` as well as in the help files of other more internal functions such as `?KlostermanFit`, `?GuFit`, `?PhenoExtract`. In fig.6 we show 4 different fitting methods applied to the same data (Harvard Forest). But let's first have a look at the arguments of greenProcess:
+
+`r arg(greenProcess)`
+
+`ts` is the zoo time series in input. It must be a time series with no NA. Arguments fit and threshold allows to choose the fitting and phenopahse methods, respectively. `plot` is a logical determining if a plot is returned or not, which is pertinent only if `fit` = 'klosterman', `uncert` is a logical for uncertainty computation, for which number of replicates is controlled by `nrep`. `envelope` and `quantiles` will be detailed later. `hydro` is a logical indicating whether days must be converted to hydrodays before the analysis, where october 1st will be doy 1 and so on (designed for southern hemisphere or for winter-growing plants). Since `phenopix` version > 2.0 the uncertainty estimation benefits from parallelization, for which arguments `ncores` controls the number of cores used in parallel computation, default is 'all' and the actual number of cores you want to use can be set with an integer. Parallelization is performed by calling function foreach in the foreach package.
+
+```{r}
+par(mfrow = c(2,2))
+## spline curve + trs phenophases
+fit1 <- greenProcess(filtered.data$max.filtered, 'spline', 'trs', plot=FALSE)
+summary(fit1)
+
+## check the plot
+plot(fit1, type='p', pch=20, col='grey')
+
+
+## Beck fitting + derivatives
+fit2 <- greenProcess(filtered.data$max.filtered, 'beck', 'derivatives', plot=FALSE)
+summary(fit2)
+plot(fit2, type='p', pch=20, col='grey')
+
+## klosterman fitting + klosterman phenophases
+fit3 <- greenProcess(filtered.data$max.filtered, 'klosterman', 'klosterman',
+plot=FALSE)
+summary(fit3)
+plot(fit3, type = 'p', pch = 20, col = 'grey')
+
+## plot(fit3, type='p', pch=20, col='grey')
+## gu fitting and phenophases
+fit4 <- greenProcess(filtered.data$max.filtered, 'gu', 'gu', plot=FALSE)
+summary(fit4)
+plot(fit4, type='p', pch=20, col='grey')
+```
+
+```{r}
+## show all together
+library(zoo)
+t <- as.numeric(format(index(filtered.data$max.filtered), '%j'))
+par(lwd=3)
+plot(t, dataframed$max.filtered, type='p', pch=20, ylab='Green chromatic coordinate', xlab='DOYs')
+lines(fitted(fit1), col='blue')
+lines(fitted(fit2), col='red')
+lines(fitted(fit3), col='green')
+lines(fitted(fit4), col='violet')
+legend('topleft', col=c('blue', 'red', 'green', 'violet'),
+lty=1, legend=c('Spline', 'Beck', 'Klosterman', 'Gu'), bty='n')
+```
+__Figure 7: Comparison of 4 different fittings from phenopix package__
+
+The function `greenProcess` creates an object of class phenopix with dedicated methods. The summary function displays a summary of the input data and of the predicted points. It then reports the formula of the fitting equation, if pertinent, see e.g. summary of `fit1` which is not based on an equation.
+
+Phenophases are printed as well. Note also the fitted function applied to phenopix object that returns a zoo time series of fitted values that can be directly lined to the plot.
+
+To complete the overview on display generic methods applied to the objects of class phenopix here is the application of generic plot (fig.8) and print functions:
+
+```{r}
+plot(fit4, pch=20, col='grey', type='p', xlab='DOYs', ylab='Green chromatic coordinates')
+```
+__Figure 8: Generic plot function applied to phenopix objects__
+
+```{r}
+print(fit4)
+```
+
+The `print` function returns information similar to `summary` but it also reports which fitting and phenophase methods were used, and if the uncertainty was estimated. The `plot` function returns a plot similar to the one constructed above, except that extracted phenophases are also shown the as vertical colored lines. Fig.5 shows that different fitting equation lead to very similar fitted values on the example from Harvard Forest data. For the sake of robustness, in such situation it is preferable to choose a fitted equation rather than a spline fit. Let's decide to choose the fitting from Gu. Now let's look from closer how do the different phenophase extraction methods impact when applied to the same fitted curve in fig.9 (and note the use of `update` generic function with method `phenopix`)
+
+```{r}
+fit4.trs <- update(fit4, 'trs', plot=FALSE)
+fit4.klosterman <- update(fit4, 'klosterman', plot=FALSE)
+fit4.gu <- update(fit4, 'gu', plot=FALSE)
+par(mfrow=c(2,2), oma=rep(5,4,4,2), mar=rep(0,4))
+plot(fit4.trs, type='n', main='', xaxt='n')
+mtext('trs', 3, adj=0.1, line=-2)
+plot(fit4.klosterman, type='n', main='', xaxt='n', yaxt='n')
+mtext('klosterman', 3, adj=0.1, line=-2)
+plot(0, type='n', axes=FALSE, xlab='', ylab='')
+plot(fit4.gu, type='n', main='', yaxt='n')
+axis(4)
+mtext('gu', 3, adj=0.1, line=-2)
+```
+Figure 9: Three phenophase methods applied to the Gu fitting
+
+The `trs` thresholds (50% of increasing and decreasing trajectory) hold a different meaning compared to Klosterman and Gu phenophases. The latter two show good correspondence except that the Klosterman s beginning of senescence occurs later compared to correspondent phase in Gu thresholds (i.e DD, downturn date).
+
+In this paragraph we have shown 4 different approaches to mathematically describe the seasonal trajectory of greenness, with additionally 5 methods to extract phenophases on the obtained curves. The combination of curves and phenophase methods leads to as many as 20 possible approaches to describe a seasonal trajectory. Sometimes it could be useful to make a decision on which curves and phenophases to use, without computing the uncertainty on all of them. To do so we have designed two functions that provide a quick overview on what would be the best fit and phenophase method for your actual trajectory. Here is how to compute the 20 combinations of fit and uncertainty in a single function:
+
+```{r}
+explored <- greenExplore(filtered.data$max.filtered)
+```
+
+`explored` is a list with 20 + 1 elements, i.e. the 20 combinations + a vector containing the RMSEs from each of the 4 fittings. This object will only be used as argument of the `plotExplore()` function (fig.10):
+
+```{r}
+plotExplore(explored)
+```
+Figure 10: Overview of all combinations of curves and fits as obtained by the `plotExplore` function
+
+The plot in fig.10 shows the impact of different fittings (moving up-downwards) and different phenophases (from left to right) on the same data (Harvard Forest). The RMSE for each of the four fitting methods is also annotated in the first column. This plot might be useful to choose the most appropriate fitting and thresholding methods on your data. `greenProcess` is a wrapper function that allows the user to define the fitting and
+phenophase methods as arguments. The "primitive" functions that actually perform the fits are the following:  
+`BeckFit`, `ElmoreFit`, `KlostermanFit` and so on. Their usage is generally:
+
+`r args(ElmoreFit)`
+
+with the most important argument beeing `ts`, the time series. Compared to using `greenProcess`, the single fitting functions have the advantage to allow more flexibility but in general the user won't need to use them.
+
+The phenophase extraction methods also have a dedicated wrapper function already embedded in the `greenProcess()` function, `PhenoExtract()` which usage is:
+
+`r args(PhenoExtract)`
+
+where the argument method allows to choose the phenophase method. Note that input data in this case should be a fitted time series in output from e.g. `FitDoubleLogElmore` and not a `phenopix` object in output from `greenProcess`. Here is an example:
+
+```{r}
+fit.elmore <- greenProcess(filtered.data$max.filtered, 'elmore', 'trs', plot=FALSE)
+extract(fit.elmore, 'metrics')
+
+fit.elmore.2 <- ElmoreFit(filtered.data$max.filtered)
+PhenoExtract(fit.elmore.2, 'trs', plot=FALSE)
+```
+
+## The uncertainty estimation
+One main functionality of the package is the uncertainty estimation. This is performed in different ways depending on the fitting equation. The basic idea behind the uncertainty estimation is how good the smoothing curve fits to the data. The residuals between fitted and observed is therefore used to generate random noise to the data and fitting is applied recursively to randomly-noised original data. This procedure results in an ensemble of curves, curve parameters and extracted phenophases that represent the uncertainty estimate. The uncertainty on curve parameters is automatically propagated to phenophase extraction. In the following example the uncertainty estimation is performed on Harvard Forest data fitted with the approach of Klosterman et al. (2014),
+with 100 replications. Here is the code:
+
+```{r}
+fit.complete <- greenProcess(ts = filtered.data$max.filtered, fit = 'gu', threshold= 'gu', plot = FALSE, uncert = TRUE, nrep = 100)
+```
+
+And here is fit.complete printed:
+```{r}
+print(fit.complete)
+```
+
+As you can see from the output, the default behavior of `greenProcess()` for the computation of uncertainty is to provide the median, 10th and 90th percentile of the uncertainty ensemble. This may be changed by modifying the `envelope` argument. The other possible option is `min-max` to get minimum
+mean and maximum. In addition, the quantiles to be chosen with `envelope` = quantiles can be changed by modifying the `quantile` argument. Here is the
+example:
+
+```{r}
+print(update(fit.complete, 'gu', envelope='min-max', plot = FALSE))
+```
+
+Beside the few options available by default and described above, the uncertainty data.frame is accessible via the `extract` command, by running:
+
+```{r}
+extract(fit.complete, 'metrics.uncert') ## get threshold uncertainty data`
+extract(fit.complete, 'params.uncert') ## get parameters of each fitting curve`
+```
+
+For example, if you want to use phenophases extracted from the true model and construct uncertainty envelope on them, you can access the uncertainty data.frame by the commands given above. Note than when the uncertainty is computed, also the plot function changes its behavior, in that it also shows the uncertainty curve ensemble and an error bar on extracted phases (fig.10).
+
+```{r}
+plot(fit.complete, type='p', pch=20)
+```
+Figure 11: The Uncertainty Estimation (100 rep) on Klosterman fit and Gu phenophases
+
+The distribution of uncertainty parameters (phenophases + curve parameters) can also be evaluated by means of box-plots with an extra option to the default `plot` method:
+
+```{r}
+plot(fit.complete, what='thresholds')
+```
+
+By using the update function you can also extract phenophases according to a different method, without refitting the data. Here is the code:
+
+```{r}
+update(fit.complete, 'klosterman', plot=FALSE)
+```
+
+Phenophase extraction method `trs` allows to set an extra argument that controls which threshold in the trajectory be used. Default is when 50% of seasonal maximum gcc is reached (indicated as 0.5). Let's see how it works:
+
+```{r}
+extract(update(fit.complete, 'trs', trs = 0.5, plot=FALSE), 'metrics') # default to 50% of increasing
+
+extract(update(fit.complete, 'trs', trs=0.2, plot=FALSE), 'metrics') # changed to 20%
+```
+
+There is a last method to define thresholds on a time series that does not need a fitting. It implements the use of break points from the package `strucchange` and works as follows:
+
+```{r}
+library(strucchange)
+par(mfrow = c(1,1))
+print(PhenoBP(x = filtered.data$max.filtered, breaks = 4, plot = TRUE, confidence= 0.99))
+```
+
+The user can set the maximum number of breakpoints to be identified, the confidence interval at which the calculation must be performed and an option or a plot. The output dataframe contains the day of the year for each of the breakpoints and their respective confidence intervals.
+
+
+## Pushing forward the analysis: pixel - based phenology
+
+In order to thoroughly exploit the capabilities of an imagery archive, spatial analysis represents the most promising feature. Hence, specific functions are built to fit curves and extract phenophases on each pixel included in a region of interest instead of averaging the greenness index over the entire ROI. A specific vignette of this package is devoted to explain details on the pixel-based analysis.
+
+## 12 Other functions
+
+A number of other functions are available in the package, that do not necessarily enter the main workflow of the processing but still may be worth to mention.
+
+`plotVI()` gets in input a `VI.data data.frame` as produced by `extractVIs` and reproduces the default plots from `extractVIs`. Useful when you use `extractVIs` with argument begin switched on and you want to update existing plots. `hydrodoy` to convert from and to hydrological day of year, to be used in conjuction with `greenProcess` with `hydro`=TRUE
+
+
+
+
+# ----- From Agr. and Forest Meteorology -----
+
+## Main functions
+
+The typical work-flow of the phenopix package is summarised in the flowchart shown in Fig. 2. First, one (or more) region(s)of interest (ROI) is (are) chosen, then digital colour numbers areextracted from the ROI of each image, and processed to obtain aseasonal time series. After filtering the time series, data are fit-ted with either a double logistic equation or a smoothing curve,on which phenological thresholds (phenophases) are extracted. Finally, uncertainty of the fit and of phenophases can be computed.
+
+### Regions of interest (ROIs)
+
+The scene of the picture rarely includes only the targeted vegetation canopy, thus the user will want to choose a particular region within the scene for analysis. Even more often, more than one region may be of interest, for example in a mixed forest one mightindependently analyse different deciduous species and evergreentrees (e.g. Ahrends et al., 2008). The function DrawROI() allows the user to draw one or more regions of interest on-screen, using the mouse cursor on a chosen reference picture.
+
+_The arguments for the `DrawROI()` function are explained in the help package. However, a little clarity may be helpful._
+    DrawROI(path_img_ref, path_ROIs, nroi = 1, roi.names, file.type='.jpg')
+    * `path_img_ref` refers to the name of the image that you want to explore. You do not need to add full path if the called image is in the working directory.  
+    * `path_ROIs` refers to the folder where you want to save the ROI.  
+    * `nroi` refers to the number of ROIs that you want to define in the image.  
+    * `roi.names` refers to the name that you want to call your new ROI
+
+```{r Set ROI}
+DrawROI("nwt-bowman.jpg", path_ROIs = "/Users/elwoodk/Google Drive/ElwoodK_Research/Computation/Phenopix/ROIs", roi.names = "roi.test2", nroi = 1, file.type = ".jpg") # Click on vertices. Use 'Esc' to finish. 
+
+DrawROI(path_img_ref = "nwt-sena.jpg", path_ROIs = "/Users/elwoodk/Google Drive/ElwoodK_Research/Computation/Phenopix/ROIs/roi.test")
+```
+
+### Extract vegetation indices
+
+From the digital colour values of each image the green chromatic coordinate (G~CC~) is computed. G~CC~ is a vegetation index derived from photographic image and quantifies the greenness relative tothe total brightness. G~CC~is computed as follows:
+
+$G_{CC} = \frac{G_{DN}}{R_{DN} + G_{DN} + B_{DN}}$
+
+where G~DN~, R~DN~, B~DN~ are the green, red, and blue digital numbers,respectively (Gillespie et al., 1987). Similarly, chromatic coordinates of red and blue (R~CC~ and B~CC~) are also computed. Several indices based on RGB colours have been developed in the last years, including for example the green excess index (GEI) (Woebbeckeet al., 1995; Mizunuma et al., 2013). Some authors also used a combination of G~CC~ and R~CC~ to extract autumn phenophases (e.g. Klosterman et al., 2014). For simplicity, all subsequent analyses willbe focused on G~CC~ but phenopix allows the analysis of the whole variety of colour indices, including the computation of new ones.
+
+The function extractVIs() extracts raw red, green and blue digital numbers from each pixel in the ROI, and computes colourchromatic coordinates as in Eq.(1). Vegetation indices can be computed on ROIs with 2 approaches (Fig. 2): (1) the ROI-averaged approach: colour chromatic coordinates are computed for eachpixel and then averaged over the whole ROI, and (2) the pixel-based approach, where each pixel belonging to the ROI is analysed separately (Section 5). The procedure is repeated for each imagein the archive. A time-stamp is retrieved from the file name of theimage and a time series of the computed indices is returned. Specific rules must be followed in naming the image files, and the reader is referred to the package help pages for more details.
+```{r}
+vignette('phenopix')
+```
+
