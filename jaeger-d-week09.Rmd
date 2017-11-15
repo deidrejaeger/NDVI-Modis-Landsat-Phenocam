@@ -1,0 +1,100 @@
+---
+title: "earth-analytics-indep-proj"
+author: "Deidre Jaeger"
+date: "11/9/2017"
+output: html_document
+---
+
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo=FALSE)
+
+```
+
+
+```{r set-wd-libraries}
+setwd("/Users/deidrejaeger/Documents/Career/CU-Boulder/Coursework/Fall2017/earth-analytics/")
+library(raster)
+library(rgdal)
+library(rgeos)
+library(RColorBrewer)
+library(dplyr)
+options(stringsAsFactors = FALSE)
+# load check_create_ directory and calcNDVI functions
+source("ea-course-functions.R")
+
+```
+
+
+
+SW Corner: 42.53676, -72.1915
+NE Corner: 42.5532, -72.1694
+
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(sp)
+
+
+# coords = matrix(c(78.46801, 19.53407,
+#                78.46801, 19.74557,
+#                78.83157, 19.74557,
+#                78.83157, 19.53407,
+#                78.46801, 19.53407), 
+#              ncol = 2, byrow = TRUE)
+# 
+# 
+# P1 = Polygon(coords)
+# Ps1 = SpatialPolygons(list(Polygons(list(P1), ID = "a")), proj4string=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+# plot(Ps1, axes = TRUE)
+
+
+library(sp)
+forest_boundary <- as(raster::extent(-72.1915, -72.1694, 42.53676, 42.5532), "SpatialPolygons")
+proj4string(forest_boundary) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+plot(forest_boundary)
+
+
+
+
+```
+
+
+```{r}
+# generate some fake data in excel as a csv
+
+# make NDVI plots for each scale
+
+ndvi_sim <- read.csv(file = "data/week_09/sim_data_harvard_pheno.csv", header = TRUE) %>% 
+  mutate(Day = as.Date(Day, format= "%m/%d/%y"))
+
+head(ndvi_sim)
+str(ndvi_sim)
+
+ggplot(data = ndvi_sim, aes(x=Day, y = PhenCam)) +
+  geom_point(alpha = 0.5, aes(color=PhenCam)) +
+  labs(x="Date", y = "NDVI", title = "NDVI for PhenoCam, Modis, and Landsat in Harvard Forest, MA",
+          subtitle = "Mar - Dec 2016") +
+  theme_classic(base_size = 9) +
+  
+  geom_point(data = ndvi_sim, aes(x = Day, y = Modis)) +
+  geom_point(alpha = 0.2, aes(color=Modis)) +
+  
+  geom_point(data = ndvi_sim, aes(x = Day, y = Landsat)) +
+  geom_point(alpha = 0.5, aes(color=Landsat)) 
+
+ggplot(data = ndvi_sim, aes(x = Day, y = Modis)) +
+  geom_point(alpha = 0.5, aes(color=Modis)) +
+  labs(x="Date", y = "NDVI", title = "NDVI for MODIS in Harvard Forest, MA",
+          subtitle = "Mar - Dec 2016") +
+  theme_classic(base_size = 9)
+
+ggplot(data = ndvi_sim, aes(x = Day, y = Landsat)) +
+  geom_point(alpha = 0.5, aes(color=Modis)) +
+  labs(x="Date", y = "NDVI", title = "NDVI for MODIS in Harvard Forest, MA",
+          subtitle = "Mar - Dec 2016") +
+  theme_classic(base_size = 9)
+```
+
