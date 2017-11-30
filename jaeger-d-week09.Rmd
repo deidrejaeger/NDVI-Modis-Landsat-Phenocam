@@ -20,6 +20,8 @@ library(rgdal)
 library(rgeos)
 library(RColorBrewer)
 library(dplyr)
+library(tidyverse)
+library(sp)
 options(stringsAsFactors = FALSE)
 # load check_create_ directory and calcNDVI functions
 source("ea-course-functions.R")
@@ -33,11 +35,14 @@ NE Corner: 42.5532, -72.1694
 
 
 
-```{r setup, include=FALSE}
-library(tidyverse)
-library(sp)
+```{r set-extent, include=FALSE}
+
+forest_boundary <- as(raster::extent(-72.1915, -72.1694, 42.53676, 42.5532), "SpatialPolygons")
+proj4string(forest_boundary) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+plot(forest_boundary)
 
 
+# # Another way to set extent, didn't finish pursuing it
 # coords = matrix(c(78.46801, 19.53407,
 #                78.46801, 19.74557,
 #                78.83157, 19.74557,
@@ -50,29 +55,21 @@ library(sp)
 # Ps1 = SpatialPolygons(list(Polygons(list(P1), ID = "a")), proj4string=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
 # plot(Ps1, axes = TRUE)
 
-
-library(sp)
-forest_boundary <- as(raster::extent(-72.1915, -72.1694, 42.53676, 42.5532), "SpatialPolygons")
-proj4string(forest_boundary) <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
-plot(forest_boundary)
-
-
-
-
 ```
 
 
-```{r}
-# generate some fake data in excel as a csv
+```{r sim-data-NDVI-plot}
 
-# make NDVI plots for each scale
-
+# open a csv of simulated example data
 ndvi_sim <- read.csv(file = "data/week_09/sim_data_harvard_pheno.csv", header = TRUE) %>% 
-  mutate(Day = as.Date(Day, format= "%m/%d/%y"))
+  mutate(Day = as.Date(Day, format= "%m/%d/%y")) # change date to date class
 
+
+# view the first lines and structure of the data
 head(ndvi_sim)
 str(ndvi_sim)
 
+# Create a plot that overlays PhenoCam, Modis, and Landsat
 ggplot(data = ndvi_sim, aes(x=Day, y = PhenCam)) +
   geom_point(alpha = 0.5, aes(color=PhenCam)) +
   labs(x="Date", y = "NDVI", title = "NDVI for PhenoCam, Modis, and Landsat in Harvard Forest, MA",
@@ -85,16 +82,35 @@ ggplot(data = ndvi_sim, aes(x=Day, y = PhenCam)) +
   geom_point(data = ndvi_sim, aes(x = Day, y = Landsat)) +
   geom_point(alpha = 0.5, aes(color=Landsat)) 
 
+
+# Plot of just Modis simulation
 ggplot(data = ndvi_sim, aes(x = Day, y = Modis)) +
   geom_point(alpha = 0.5, aes(color=Modis)) +
   labs(x="Date", y = "NDVI", title = "NDVI for MODIS in Harvard Forest, MA",
           subtitle = "Mar - Dec 2016") +
   theme_classic(base_size = 9)
 
+# Plot of just Landsat simulation
 ggplot(data = ndvi_sim, aes(x = Day, y = Landsat)) +
   geom_point(alpha = 0.5, aes(color=Modis)) +
   labs(x="Date", y = "NDVI", title = "NDVI for MODIS in Harvard Forest, MA",
           subtitle = "Mar - Dec 2016") +
   theme_classic(base_size = 9)
+```
+
+```{r read-in-landsat-data}
+
+
+
+
+```
+
+
+```{r clip-to-extent}
+
+```
+
+```{r calculate-NDVI}
+
 ```
 

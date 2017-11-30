@@ -1,0 +1,36 @@
+---
+title: "hdf conversion"
+author: "Kelly Carney"
+date: "11/9/2017"
+output: html_document
+---
+
+```{r}
+# libraries
+library(rgdal)
+library(gdalUtils)
+library(raster)
+```
+
+```{r}
+gdalinfo("data/MOD13Q1.A2016337.h12v04.005.2016356185413.hdf")
+```
+
+```{r}
+# Convert MODIS hdf files
+# read in MODIS files
+gdalinfo("data/MODIS HDF/MOD13Q1.A2016097.h12v04.006.2016114040942.hdf")
+sds <- dir("data/MODIS HDF", pattern = ".hdf")
+# cut off the .hdf
+filename <- substr(sds,1,16) 
+filename <- paste0("NPP", filename, ".tif")
+# turn filename to a group of files rather than characters
+i <- 1
+for (i in 1:16){
+  sds <- get_subdatasets(files[i])
+  gdal_translate(sds[1], dst_dataset = filename[i])
+}
+# read in modis data and rename by dates
+r <- raster(filename)
+```
+
